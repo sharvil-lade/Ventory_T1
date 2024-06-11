@@ -1,0 +1,5 @@
+Flask
+opencv-python
+Pillow
+img2pdf
+firebase-admin
