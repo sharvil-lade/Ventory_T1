@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Certificate Generator</title>
+</head>
+<body>
+    <h1>Generate Your Certificate</h1>
+    <form action="/create/" method="post">
+        <label for="candidate_name">Name:</label>
+        <input type="text" id="candidate_name" name="candidate_name" maxlength="20" required>
+        <br>
+        <label for="candidate_email">Email:</label>
+        <input type="email" id="candidate_email" name="candidate_email" required>
+        <br>
+        <input type="submit" value="Generate Certificate">
+    </form>
+    
+    {% if certificate_url %}
+    <h3>Your Certificate</h3>
+    <p>Your certificate has been generated successfully. You can download it from the link below:</p>
+    <a href="{{ certificate_url }}" target="_blank">Download Certificate</a>
+    {% endif %}
+</body>
+</html>

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for
 import cv2
 import uuid
 from PIL import Image
@@ -10,7 +10,8 @@ app = Flask(__name__)
 
 @app.route('/')
 def cm_app():  # Home page route
-    return "To generate a certificate, go to: http://localhost:3000/create?candidate_name=FirstName%20LastName&candidate_email=YourEmail"
+    certificate_url = request.args.get('certificate_url')
+    return render_template('index.html', certificate_url=certificate_url)
 
 def add_text_to_certificate(candidate_name, candidate_id):
     # Define certificate image path
@@ -60,55 +61,74 @@ def add_text_to_certificate(candidate_name, candidate_id):
 
     return pdf_path
 
-@app.route('/create/', methods=['GET'])
+@app.route('/create/', methods=['POST'])
 def create():
-    # Extract candidate_name and candidate_email from query parameters
-    candidate_name = request.args.get('candidate_name')[:20]  # Limit name to 20 characters
-    candidate_email = request.args.get('candidate_email')
+    try:
+        # Extract candidate_name and candidate_email from form data
+        candidate_name = request.form.get('candidate_name')[:20]  # Limit name to 20 characters
+        candidate_email = request.form.get('candidate_email')
+        print(f"Received form data: Name - {candidate_name}, Email - {candidate_email}")
 
-    # Generate a unique ID for the candidate
-    candidate_id = uuid.uuid4().hex
+        # Generate a unique ID for the candidate
+        candidate_id = uuid.uuid4().hex
+        print(f"Generated candidate ID: {candidate_id}")
 
-    # Add text to the certificate
-    pdf_path = add_text_to_certificate(candidate_name, candidate_id)
+        # Add text to the certificate
+        pdf_path = add_text_to_certificate(candidate_name, candidate_id)
+        print(f"Certificate generated and saved to: {pdf_path}")
 
-    # Create a blob object for the PDF file in Firebase Storage
-    blob = bucket.blob(f"certificates/{candidate_id}.pdf")
+        # Create a blob object for the PDF file in Firebase Storage
+        blob = bucket.blob(f"certificates/{candidate_id}.pdf")
 
-    # Upload the PDF file
-    blob.upload_from_filename(pdf_path)
+        # Upload the PDF file
+        blob.upload_from_filename(pdf_path)
+        print(f"Uploaded PDF to Firebase Storage at: certificates/{candidate_id}.pdf")
 
-    # Make the uploaded PDF publicly readable
-    blob.make_public()
+        # Make the uploaded PDF publicly readable
+        blob.make_public()
+        print("Made the PDF publicly readable")
 
-    # Get the public URL of the uploaded PDF
-    public_url = blob.public_url
+        # Get the public URL of the uploaded PDF
+        public_url = blob.public_url
+        print(f"Public URL of the uploaded PDF: {public_url}")
 
-    # Create a new document in the 'candidates' collection in Firestore
-    details = {
-        'candidate_name': candidate_name,
-        'candidate_email': candidate_email,
-        'certificate_url': public_url
-    }
-    doc_ref = db.collection('candidates').document(candidate_id)
-    doc_ref.set(details)
+        # Create a new document in the 'candidates' collection in Firestore
+        details = {
+            'candidate_name': candidate_name,
+            'candidate_email': candidate_email,
+            'certificate_url': public_url
+        }
+        doc_ref = db.collection('candidates').document(candidate_id)
+        doc_ref.set(details)
+        print(f"Saved details to Firestore: {details}")
 
-    # Return the candidate details as JSON
-    return jsonify(details)
+        # Redirect to the home page with the certificate URL
+        return redirect(url_for('cm_app', certificate_url=public_url))
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return str(e), 500
 
 @app.route('/certificate/<certificate_id>', methods=['GET'])
 def display_certificate(certificate_id):
-    # Retrieve the document reference for the given certificate ID from Firestore
-    doc_ref = db.collection('candidates').document(certificate_id)
+    try:
+        # Retrieve the document reference for the given certificate ID from Firestore
+        doc_ref = db.collection('candidates').document(certificate_id)
 
-    # Convert the document reference to a dictionary
-    doc = doc_ref.get().to_dict()
+        # Convert the document reference to a dictionary
+        doc = doc_ref.get().to_dict()
 
-    # Get the certificate URL from the document
-    certificate_url = doc.get('certificate_url')
+        if doc is None:
+            return "Certificate not found", 404
 
-    # Render the template with the certificate URL
-    return render_template('certificate.html', certificate_url=certificate_url)
+        # Get the certificate URL from the document
+        certificate_url = doc.get('certificate_url')
+
+        # Render the template with the certificate URL
+        return render_template('certificate.html', certificate_url=certificate_url)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return str(e), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=3000)
